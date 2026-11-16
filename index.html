@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>המודים של sruli</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main class="wrap">
+  <h1>המודים של sruli</h1>
+  <p class="lead">בוחרים את גרסת המיינקראפט שלכם ו-Forge או Fabric, ומורידים. נקודה ירוקה על גרסה אומרת שיש לה מודים.</p>
+
+  <section class="panel" aria-label="בחירת גרסה">
+    <p class="label">גרסת מיינקראפט</p>
+    <div class="hotbar" id="versions" role="group" aria-label="גרסאות"></div>
+    <div class="row">
+      <div>
+        <p class="label">טוען מודים</p>
+        <div class="tog" role="group" aria-label="טוען מודים">
+          <button type="button" data-loader="forge" aria-pressed="true">Forge</button>
+          <button type="button" data-loader="fabric" aria-pressed="false">Fabric</button>
+        </div>
+      </div>
+      <input type="search" id="q" placeholder="חיפוש מוד..." aria-label="חיפוש מוד">
+    </div>
+  </section>
+
+  <p class="count" id="count" aria-live="polite"></p>
+  <div class="mods" id="mods"></div>
+
+  <details class="howto">
+    <summary>איך מתקינים מוד?</summary>
+    <ol>
+      <li>מתקינים את Forge או Fabric לאותה גרסה (ב-Dawn זה פשוט בוחרים גרסה עם Forge או Fabric).</li>
+      <li>מורידים מכאן את המוד לגרסה ולטוען הנכונים.</li>
+      <li>שמים את קובץ ה-JAR בתיקייה <span class="pix">mods</span> של המשחק ופותחים את המשחק.</li>
+      <li>במודים של Fabric צריך גם את Fabric API באותה תיקייה.</li>
+    </ol>
+  </details>
+</main>
+<script src="versions.js"></script>
+<script>
+const st = { get(k){ try { return localStorage.getItem(k) } catch(e){ return null } }, set(k,v){ try { localStorage.setItem(k,v) } catch(e){} } };
+const state = { mc: st.get('mc'), loader: st.get('loader') || 'forge', q: '' };
+let picked = !!state.mc;
+let mods = [];
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const kb = n => n > 1048576 ? (n/1048576).toFixed(1) + 'MB' : Math.max(1, Math.round(n/1024)) + 'KB';
+
+function fileFor(mod, mc, loader) {
+  return (mod.files || []).filter(f => f.mc === mc && f.loader === loader)
+    .sort((a, b) => (b.date || '').localeCompare(a.date || ''))[0];
+}
+function versionsWithMods() {
+  const s = new Set();
+  mods.forEach(m => (m.files || []).forEach(f => s.add(f.mc)));
+  return s;
+}
+function drawVersions() {
+  const has = versionsWithMods();
+  // until the visitor picks one: the newest version that has mods
+  if (!picked || !MC_VERSIONS.includes(state.mc)) state.mc = MC_VERSIONS.find(v => has.has(v)) || MC_VERSIONS[0];
+  $('#versions').innerHTML = MC_VERSIONS.map(v =>
+    `<button type="button" class="slot${has.has(v) ? ' has' : ''}" data-mc="${v}" aria-pressed="${v === state.mc}" title="${has.has(v) ? 'יש מודים' : 'עוד אין מודים'}">${v}</button>`).join('');
+  const sel = document.querySelector('.slot[aria-pressed=true]');
+  if (sel) sel.scrollIntoView({ block: 'nearest', inline: 'center' });
+}
+function draw() {
+  drawVersions();
+  document.querySelectorAll('.tog button').forEach(b => b.setAttribute('aria-pressed', b.dataset.loader === state.loader));
+  const q = state.q.trim().toLowerCase();
+  const list = mods.filter(m => !q || (m.name + ' ' + (m.desc || '')).toLowerCase().includes(q));
+  const ready = list.filter(m => fileFor(m, state.mc, state.loader));
+  const loaderName = state.loader === 'forge' ? 'Forge' : 'Fabric';
+  $('#count').textContent = `${ready.length} מודים ל-${loaderName} ${state.mc}` + (list.length > ready.length ? ` (ועוד ${list.length - ready.length} שעוד לא הגיעו לגרסה הזאת)` : '');
+  if (!mods.length) { $('#mods').innerHTML = '<p class="empty">עוד אין כאן מודים. בקרוב!</p>'; return; }
+  const sorted = [...ready, ...list.filter(m => !ready.includes(m))];
+  $('#mods').innerHTML = sorted.map(m => {
+    const f = fileFor(m, state.mc, state.loader);
+    const other = (m.files || []).filter(x => x.loader === state.loader).map(x => x.mc);
+    const others = [...new Set(other)].sort((a, b) => MC_VERSIONS.indexOf(a) - MC_VERSIONS.indexOf(b));
+    return `<article class="panel mod">
+      <div>
+        <h2>${esc(m.name)}</h2>
+        <p>${esc(m.desc)}</p>
+        ${f ? `<div class="meta"><span class="chip ok">${esc(loaderName)} ${esc(f.mc)}</span><span class="chip">גרסה ${esc(f.version)}</span><span class="chip">${kb(f.size || 0)}</span></div>` : ''}
+      </div>
+      <div class="dl">${f ? `<a class="btn" href="${esc(f.path)}" download>הורדה</a>` : `<span class="missing">אין עדיין ל-${esc(loaderName)} ${esc(state.mc)}</span>`}</div>
+      ${!f && others.length ? `<div class="others">יש ל-${esc(loaderName)}: ${others.map(v => `<a href="#" data-goto="${esc(v)}">${esc(v)}</a>`).join(', ')}</div>` : ''}
+    </article>`;
+  }).join('');
+}
+document.addEventListener('click', e => {
+  const s = e.target.closest('[data-mc]'); if (s) { state.mc = s.dataset.mc; picked = true; st.set('mc', state.mc); draw(); }
+  const l = e.target.closest('[data-loader]'); if (l) { state.loader = l.dataset.loader; st.set('loader', state.loader); draw(); }
+  const g = e.target.closest('[data-goto]'); if (g) { e.preventDefault(); state.mc = g.dataset.goto; picked = true; st.set('mc', state.mc); draw(); }
+});
+$('#q').addEventListener('input', e => { state.q = e.target.value; draw(); });
+fetch('mods.json?t=' + Date.now()).then(r => r.json()).then(d => { mods = d.mods || []; draw(); })
+  .catch(() => { $('#mods').innerHTML = '<p class="empty">לא הצלחתי לטעון את רשימת המודים. נסו לרענן את הדף.</p>'; });
+draw();
+</script>
+</body>
+</html>

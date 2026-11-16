@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex">
+<title>ניהול מודים</title>
+<link rel="stylesheet" href="style.css">
+<style>
+.grid{display:grid;gap:14px}
+.f{display:grid;gap:6px;margin-bottom:12px}
+.f label{font-weight:700;font-size:14px;color:#3a3a3a}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+textarea{min-height:70px;resize:vertical}
+.log{background:#000;color:#9ef05a;font:13px 'Silkscreen',monospace;padding:10px;min-height:44px;white-space:pre-wrap;max-height:220px;overflow:auto;border:3px solid #000}
+table{width:100%;border-collapse:collapse;font-size:14px}
+td,th{padding:6px 4px;border-bottom:2px solid #a9a9a9;text-align:right}
+.drop{border:3px dashed #555;padding:22px;text-align:center;color:#3a3a3a;background:#b8b8b8;cursor:pointer}
+.drop.on{background:#d6f5b8}
+h2{margin:0 0 10px;font-size:20px;color:#1e1e1e}
+.hint{font-size:13px;color:#4a4a4a;margin:4px 0 0}
+@media (max-width:620px){.two{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<main class="wrap">
+  <h1>ניהול מודים</h1>
+  <p class="lead">מוסיפים מודים ומעלים קבצים. הכל נשמר ב-GitHub ומופיע באתר תוך דקה-שתיים.</p>
+
+  <div class="grid">
+    <section class="panel" id="login">
+      <h2>חיבור ל-GitHub</h2>
+      <div class="two">
+        <div class="f"><label for="repo">מאגר (משתמש/שם)</label><input type="text" id="repo" dir="ltr"></div>
+        <div class="f"><label for="token">טוקן</label><input type="password" id="token" dir="ltr" autocomplete="off"></div>
+      </div>
+      <button class="btn" id="connect">התחברות</button>
+      <p class="hint">הטוקן נשמר רק בדפדפן הזה. אל תפתח את דף הניהול במחשב של מישהו אחר.</p>
+    </section>
+
+    <section class="panel" id="addMod" hidden>
+      <h2>מוד חדש / עריכת מוד</h2>
+      <div class="two">
+        <div class="f"><label for="mid">מזהה באנגלית (בלי רווחים)</label><input type="text" id="mid" dir="ltr" placeholder="barrierarmor"></div>
+        <div class="f"><label for="mname">שם המוד</label><input type="text" id="mname"></div>
+      </div>
+      <div class="f"><label for="mdesc">תיאור קצר</label><textarea id="mdesc"></textarea></div>
+      <button class="btn" id="saveMod">שמירת המוד</button>
+    </section>
+
+    <section class="panel" id="upload" hidden>
+      <h2>העלאת קבצים</h2>
+      <div class="two">
+        <div class="f"><label for="umod">מוד</label><select id="umod"></select></div>
+        <div class="f"><label for="uver">גרסת המוד</label><input type="text" id="uver" dir="ltr" placeholder="1.0.0"></div>
+        <div class="f"><label for="umc">גרסת מיינקראפט</label><select id="umc" dir="ltr"></select></div>
+        <div class="f"><label for="uloader">טוען</label><select id="uloader"><option value="forge">Forge</option><option value="fabric">Fabric</option></select></div>
+      </div>
+      <div class="drop" id="drop" tabindex="0">גוררים לכאן קבצי JAR, או לוחצים לבחירה<br><span class="hint">קובץ בשם כמו <span class="pix">barrierarmor-forge-1.21.11-1.96.0.jar</span> מתמלא לבד: מוד, טוען, גרסה</span></div>
+      <input type="file" id="file" accept=".jar" multiple hidden>
+    </section>
+
+    <section class="panel" id="list" hidden>
+      <h2>המודים באתר</h2>
+      <div id="table"></div>
+    </section>
+
+    <div class="log" id="log" aria-live="polite">מוכן.</div>
+  </div>
+</main>
+<script src="versions.js"></script>
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const store = { get(k){ try { return localStorage.getItem(k) } catch(e){ return null } }, set(k,v){ try { localStorage.setItem(k,v) } catch(e){} } };
+function log(m){ $('#log').textContent = m + '\n' + $('#log').textContent.slice(0, 4000); }
+
+// repo guess: <user>.github.io/<repo>/admin.html
+const host = location.hostname.endsWith('.github.io') ? location.hostname.split('.')[0] : '';
+const path = location.pathname.split('/').filter(Boolean)[0] || '';
+$('#repo').value = store.get('repo') || (host && path && !path.endsWith('.html') ? host + '/' + path : 'avinoam172-rgb/minecraft-mods');
+$('#token').value = store.get('token') || '';
+$('#umc').innerHTML = MC_VERSIONS.map(v => `<option>${v}</option>`).join('');
+
+let data = { mods: [] }, sha = null;
+const api = (p, opt = {}) => fetch('https://api.github.com/repos/' + $('#repo').value.trim() + p, {
+  ...opt, headers: { 'Authorization': 'Bearer ' + $('#token').value.trim(), 'Accept': 'application/vnd.github+json', ...(opt.headers || {}) } });
+
+const b64 = s => btoa(unescape(encodeURIComponent(s)));
+const unb64 = s => decodeURIComponent(escape(atob(s.replace(/\n/g, ''))));
+
+async function loadData() {
+  const r = await api('/contents/mods.json?ref=main&t=' + Date.now());
+  if (r.status === 404) { data = { mods: [] }; sha = null; return; }
+  if (!r.ok) throw new Error('GitHub ' + r.status + ' (טוקן או שם מאגר לא נכונים?)');
+  const j = await r.json(); sha = j.sha; data = JSON.parse(unb64(j.content));
+  data.mods = data.mods || [];
+}
+async function saveData(msg) {
+  const body = { message: msg, content: b64(JSON.stringify(data, null, 2) + '\n'), branch: 'main' };
+  if (sha) body.sha = sha;
+  const r = await api('/contents/mods.json', { method: 'PUT', body: JSON.stringify(body) });
+  if (r.status === 409 || r.status === 422) throw new Error('הרשימה השתנתה בינתיים - רענן ונסה שוב');
+  if (!r.ok) throw new Error('שמירה נכשלה: GitHub ' + r.status);
+  sha = (await r.json()).content.sha;
+}
+async function putFile(path, base64, msg) {
+  let old = null;
+  const g = await api('/contents/' + path + '?ref=main');
+  if (g.ok) old = (await g.json()).sha;
+  const body = { message: msg, content: base64, branch: 'main' };
+  if (old) body.sha = old;
+  const r = await api('/contents/' + path, { method: 'PUT', body: JSON.stringify(body) });
+  if (!r.ok) throw new Error('העלאה נכשלה: GitHub ' + r.status);
+}
+async function delFile(path, msg) {
+  const g = await api('/contents/' + path + '?ref=main');
+  if (!g.ok) return;
+  const s = (await g.json()).sha;
+  await api('/contents/' + path, { method: 'DELETE', body: JSON.stringify({ message: msg, sha: s, branch: 'main' }) });
+}
+const fileB64 = f => new Promise((ok, bad) => { const r = new FileReader(); r.onload = () => ok(r.result.split(',')[1]); r.onerror = bad; r.readAsDataURL(f); });
+
+function draw() {
+  $('#umod').innerHTML = data.mods.map(m => `<option value="${esc(m.id)}">${esc(m.name)}</option>`).join('');
+  if (!data.mods.length) { $('#table').innerHTML = '<p>עוד אין מודים. הוסף מוד למעלה.</p>'; return; }
+  $('#table').innerHTML = data.mods.map(m => `
+    <div style="margin-bottom:18px">
+      <strong>${esc(m.name)}</strong> <span class="chip">${esc(m.id)}</span>
+      <button class="btn gray" data-edit="${esc(m.id)}" style="padding:4px 10px;font-size:14px">עריכה</button>
+      <button class="btn red" data-delmod="${esc(m.id)}" style="padding:4px 10px;font-size:14px">מחיקת המוד</button>
+      <table><tr><th>מיינקראפט</th><th>טוען</th><th>גרסה</th><th></th></tr>
+      ${(m.files || []).sort((a,b) => MC_VERSIONS.indexOf(a.mc) - MC_VERSIONS.indexOf(b.mc) || a.loader.localeCompare(b.loader)).map((f, i) => `
+        <tr><td class="pix">${esc(f.mc)}</td><td>${esc(f.loader)}</td><td class="pix">${esc(f.version)}</td>
+        <td><button class="btn red" data-delfile="${esc(m.id)}|${esc(f.path)}" style="padding:2px 8px;font-size:13px">מחיקה</button></td></tr>`).join('')}
+      </table></div>`).join('');
+}
+
+$('#connect').onclick = async () => {
+  store.set('repo', $('#repo').value.trim()); store.set('token', $('#token').value.trim());
+  try { await loadData(); ['#addMod', '#upload', '#list'].forEach(s => $(s).hidden = false); draw(); log('מחובר. ' + data.mods.length + ' מודים.'); }
+  catch (e) { log('✖ ' + e.message); }
+};
+
+$('#saveMod').onclick = async () => {
+  const id = $('#mid').value.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '');
+  const name = $('#mname').value.trim();
+  if (!id || !name) { log('✖ צריך מזהה ושם'); return; }
+  try {
+    await loadData();
+    let m = data.mods.find(x => x.id === id);
+    if (!m) { m = { id, files: [] }; data.mods.push(m); }
+    m.name = name; m.desc = $('#mdesc').value.trim();
+    await saveData('Mod ' + id);
+    draw(); log('✔ נשמר: ' + name);
+  } catch (e) { log('✖ ' + e.message); }
+};
+
+// barrierarmor-forge-1.21.11-1.96.0.jar  ->  id, loader, mc, version
+function parseName(n) {
+  const m = n.match(/^(.+?)-(forge|fabric)-(\d+(?:\.\d+){1,2})-(.+)\.jar$/i);
+  return m ? { id: m[1].toLowerCase(), loader: m[2].toLowerCase(), mc: m[3], version: m[4] } : null;
+}
+async function upload(files) {
+  for (const f of files) {
+    const p = parseName(f.name) || {};
+    const id = p.id && data.mods.some(m => m.id === p.id) ? p.id : $('#umod').value;
+    const loader = p.loader || $('#uloader').value, mc = p.mc || $('#umc').value, version = p.version || $('#uver').value.trim() || '1.0.0';
+    if (!id) { log('✖ קודם הוסף מוד'); return; }
+    if (!MC_VERSIONS.includes(mc)) { log('✖ ' + f.name + ': גרסה ' + mc + ' לא ברשימה (versions.js)'); continue; }
+    try {
+      log('מעלה ' + f.name + '...');
+      const path = `files/${id}/${mc}/${loader}/${f.name}`;
+      await putFile(path, await fileB64(f), `Upload ${f.name}`);
+      await loadData();
+      const m = data.mods.find(x => x.id === id);
+      const old = (m.files || []).filter(x => x.mc === mc && x.loader === loader && x.path !== path);
+      m.files = (m.files || []).filter(x => !(x.mc === mc && x.loader === loader));
+      m.files.push({ mc, loader, version, path, size: f.size, date: new Date().toISOString().slice(0, 10) });
+      await saveData(`Add ${id} ${loader} ${mc} ${version}`);
+      for (const o of old) await delFile(o.path, 'Replace ' + o.path); // the older file for the same version
+      draw(); log('✔ ' + f.name + ' → ' + id + ' / ' + loader + ' ' + mc);
+    } catch (e) { log('✖ ' + f.name + ': ' + e.message); }
+  }
+}
+const drop = $('#drop');
+drop.onclick = () => $('#file').click();
+drop.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); $('#file').click(); } };
+$('#file').onchange = e => { upload([...e.target.files]); e.target.value = ''; };
+drop.ondragover = e => { e.preventDefault(); drop.classList.add('on'); };
+drop.ondragleave = () => drop.classList.remove('on');
+drop.ondrop = e => { e.preventDefault(); drop.classList.remove('on'); upload([...e.dataTransfer.files].filter(f => f.name.endsWith('.jar'))); };
+
+document.addEventListener('click', async e => {
+  const ed = e.target.closest('[data-edit]');
+  if (ed) { const m = data.mods.find(x => x.id === ed.dataset.edit); $('#mid').value = m.id; $('#mname').value = m.name; $('#mdesc').value = m.desc || ''; $('#mid').focus(); }
+  const df = e.target.closest('[data-delfile]');
+  if (df) {
+    const [id, path] = df.dataset.delfile.split('|');
+    if (!confirm('למחוק את הקובץ?')) return;
+    try { await loadData(); const m = data.mods.find(x => x.id === id); m.files = m.files.filter(f => f.path !== path);
+      await saveData('Remove ' + path); await delFile(path, 'Remove ' + path); draw(); log('✔ נמחק'); } catch (er) { log('✖ ' + er.message); }
+  }
+  const dm = e.target.closest('[data-delmod]');
+  if (dm) {
+    const id = dm.dataset.delmod;
+    if (!confirm('למחוק את כל המוד וכל הקבצים שלו?')) return;
+    try { await loadData(); const m = data.mods.find(x => x.id === id);
+      data.mods = data.mods.filter(x => x.id !== id); await saveData('Remove mod ' + id);
+      for (const f of (m.files || [])) await delFile(f.path, 'Remove ' + f.path);
+      draw(); log('✔ המוד נמחק'); } catch (er) { log('✖ ' + er.message); }
+  }
+});
+if ($('#token').value) $('#connect').click();
+</script>
+</body>
+</html>
