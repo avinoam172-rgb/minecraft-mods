@@ -1,3 +1,27 @@
 {
-  "mods": []
+  "mods": [
+    {
+      "id": "barrierarmor",
+      "name": "BarrierArmor",
+      "desc": "המוד הגדול שבו הכל ביחד: J זורק את כל השריון, בלוקי barrier תמיד נראים, /good, /xp, /block, /grind, שעון, דיבור לצ'אט, הצצה לכישופים, זום ועוד. בקרוב כל דבר יהיה גם מוד נפרד.",
+      "files": [
+        {
+          "mc": "1.21.11",
+          "loader": "forge",
+          "version": "1.96.0",
+          "path": "files/barrierarmor/1.21.11/forge/barrierarmor-forge-1.21.11-1.96.0.jar",
+          "size": 354227,
+          "date": "2026-11-16"
+        },
+        {
+          "mc": "1.21.11",
+          "loader": "fabric",
+          "version": "1.96.0",
+          "path": "files/barrierarmor/1.21.11/fabric/barrierarmor-fabric-1.21.11-1.96.0.jar",
+          "size": 382578,
+          "date": "2026-11-16"
+        }
+      ]
+    }
+  ]
 }
