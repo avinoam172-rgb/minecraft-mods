@@ -30,7 +30,7 @@ h2{margin:0 0 10px;font-size:20px;color:#1e1e1e}
     <section class="panel" id="login">
       <h2>חיבור ל-GitHub</h2>
       <div class="two">
-        <div class="f"><label for="repo">מאגר (משתמש/שם)</label><input type="text" id="repo" dir="ltr"></div>
+        <div class="f"><label for="repo">מאגר (משתמש/שם)</label><input type="text" id="repo" dir="ltr" placeholder="user/minecraft-mods"></div>
         <div class="f"><label for="token">טוקן</label><input type="password" id="token" dir="ltr" autocomplete="off"></div>
       </div>
       <button class="btn" id="connect">התחברות</button>
@@ -77,7 +77,7 @@ function log(m){ $('#log').textContent = m + '\n' + $('#log').textContent.slice(
 // repo guess: <user>.github.io/<repo>/admin.html
 const host = location.hostname.endsWith('.github.io') ? location.hostname.split('.')[0] : '';
 const path = location.pathname.split('/').filter(Boolean)[0] || '';
-$('#repo').value = store.get('repo') || (host && path && !path.endsWith('.html') ? host + '/' + path : 'avinoam172-rgb/minecraft-mods');
+$('#repo').value = store.get('repo') || ''; // not written in the page - so nobody sees whose site it is
 $('#token').value = store.get('token') || '';
 $('#umc').innerHTML = MC_VERSIONS.map(v => `<option>${v}</option>`).join('');
 
